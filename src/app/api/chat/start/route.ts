@@ -67,10 +67,39 @@ export async function POST(request: Request) {
         },
       });
       console.log('[CHAT_START] RAG API response status:', ragResponse.status);
-    } catch (fetchError) {
+    } catch (fetchError: any) {
       console.error('[CHAT_START] ❌ Error calling RAG API:', fetchError);
+      
+      // Detailed error message based on error type
+      let errorMessage = 'FastAPI backend tidak dapat dijangkau. ';
+      
+      if (fetchError.code === 'ECONNREFUSED') {
+        errorMessage += `
+          
+🔴 FASTAPI BACKEND TIDAK BERJALAN!
+
+Solusi:
+1. Buka terminal baru
+2. Jalankan: python fastapi-app.py
+3. Pastikan FastAPI running di http://localhost:5000
+4. Refresh halaman ini
+
+Error: Connection refused to ${ragApiUrl}
+        `.trim();
+      } else if (fetchError.code === 'ENOTFOUND') {
+        errorMessage += 'Host tidak ditemukan. Periksa RAG_API_URL di .env';
+      } else if (fetchError.code === 'ETIMEDOUT') {
+        errorMessage += 'Connection timeout. Pastikan FastAPI berjalan dan tidak hang.';
+      } else {
+        errorMessage += fetchError.message || 'Unknown network error';
+      }
+      
       return NextResponse.json(
-        { error: 'Failed to connect to RAG server: ' + (fetchError as Error).message },
+        { 
+          error: errorMessage,
+          code: fetchError.code,
+          ragApiUrl: ragApiUrl
+        },
         { status: 502 }
       );
     }

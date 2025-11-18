@@ -10,12 +10,12 @@ interface Message {
   isUser: boolean;
 }
 
+// Category mapping yang sesuai dengan FastAPI backend
 const categories = [
-  { id: 'akademik', name: 'Akademik Umum' },
-  { id: 'magang', name: 'Magang & MBKM' },
-  { id: 'kp', name: 'Kerja Praktik' },
-  { id: 'tugas-akhir', name: 'Tugas Akhir' },
-  { id: 'lainnya', name: 'Lainnya' },
+  { id: 'Capstone', name: 'Capstone (Tugas Akhir)' },
+  { id: 'KP', name: 'KP (Kerja Praktek)' },
+  { id: 'MBKM', name: 'MBKM' },
+  { id: 'Registrasi MK', name: 'Registrasi MK' },
 ];
 
 export default function ChatWindow() {
@@ -109,7 +109,13 @@ export default function ChatWindow() {
       } catch (err: any) {
         console.error('[ChatWindow] ❌ Error:', err);
         const errorMsg = err.message || 'Gagal menginisialisasi chat';
-        setError(`Error: ${errorMsg}`);
+        
+        // Format error message untuk display yang lebih baik
+        const formattedError = errorMsg.includes('FASTAPI BACKEND') 
+          ? errorMsg 
+          : `⚠️ Gagal terhubung ke server: ${errorMsg}`;
+        
+        setError(formattedError);
         initRef.current = false; // Allow manual retry
       } finally {
         setIsInitializing(false);
@@ -232,18 +238,35 @@ export default function ChatWindow() {
       {/* 2. Area Pesan */}
       <div className="h-96 p-4 overflow-y-auto flex flex-col space-y-2">
         {error && (
-          <div className="bg-red-100 border border-red-400 text-red-700 p-3 rounded-md text-sm">
-            <p className="font-semibold">❌ {error}</p>
-            <div className="mt-3 space-y-2">
-              <p className="text-xs">
-                💡 Solusi: Coba refresh halaman (F5) atau logout & login kembali
-              </p>
-              <button
-                onClick={handleRetryInit}
-                className="bg-red-600 text-white px-3 py-1.5 rounded text-sm hover:bg-red-700 transition"
-              >
-                🔄 Coba Lagi
-              </button>
+          <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-md shadow-sm">
+            <div className="flex items-start">
+              <div className="shrink-0">
+                <svg className="h-5 w-5 text-red-500" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3 flex-1">
+                <h3 className="text-sm font-semibold text-red-800 mb-2">Koneksi Backend Gagal</h3>
+                <div className="text-sm text-red-700 whitespace-pre-wrap font-mono bg-red-100 p-3 rounded">
+                  {error}
+                </div>
+                <div className="mt-4 flex gap-2">
+                  <button
+                    onClick={handleRetryInit}
+                    className="bg-red-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-red-700 transition shadow"
+                  >
+                    🔄 Coba Lagi
+                  </button>
+                  <a
+                    href="https://github.com/ahmfzui/obrolin-chatbot/blob/main/README.md"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700 transition shadow"
+                  >
+                    📖 Lihat Panduan
+                  </a>
+                </div>
+              </div>
             </div>
           </div>
         )}
