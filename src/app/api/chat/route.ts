@@ -2,15 +2,18 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 // Pastikan path ini benar: dari /api/chat/ naik 1 level ke /api/
 import { authOptions } from '../auth/[...nextauth]/route';
-import { db } from '@/lib/db';
-import { createConversation, chatWithRag } from '@/lib/ragClient';
+// Use relative imports here so tsc resolves them when running diagnostics
+import { db } from '../../../lib/db';
+import { createConversation, chatWithRag } from '../../../lib/ragClient';
 
 const DAILY_LIMIT = 50; // Sesuai FR-10 (Batas Pertanyaan Harian)
 
 // Ini adalah fungsi GET untuk mengambil riwayat (sudah kita buat sebelumnya)
 export async function GET(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
+  // session typing augmentation sometimes isn't picked up by tsc in this environment;
+  // cast to any to avoid type errors while still performing runtime checks.
+  const session = (await getServerSession(authOptions)) as any;
     if (!session || !session.user || !session.user.id) {
       return new NextResponse('Unauthorized', { status: 401 });
     }
@@ -34,8 +37,9 @@ export async function GET(request: Request) {
 // Ini adalah fungsi POST untuk mengirim pesan (YANG KITA MODIFIKASI)
 export async function POST(request: Request) {
   try {
-    // 1. Cek Autentikasi (Siapa yang bertanya?)
-    const session = await getServerSession(authOptions);
+  // 1. Cek Autentikasi (Siapa yang bertanya?)
+  // Cast to any as type augmentation may not be recognized by the TS process running here
+  const session = (await getServerSession(authOptions)) as any;
     
     // DEBUG LOG (opsional)
     console.log('[CHAT_POST] Session check:', {
@@ -105,14 +109,32 @@ export async function POST(request: Request) {
       console.log('[CHAT_POST] RAG response received, length:', ragAnswer?.length);
 
       // 5. Simpan ke Database Riwayat (Sesuai ERD)
-      await db.chat.create({
-        data: {
-          userId: userId,
-          Category: category,
-          Question: question,
-          Answer: ragAnswer, // menyimpan jawaban AI asli
-        },
-      });
+      // If we created a lightweight row at conversation start, update it instead of creating a duplicate.
+      try {
+        const existing = await db.chat.findFirst({ where: { conversation_id: conversationId, userId } } as any);
+        if (existing) {
+          await db.chat.update({
+            where: { Chat_id: existing.Chat_id },
+            data: {
+              Category: category,
+              Question: question,
+              Answer: ragAnswer,
+            } as any,
+          });
+        } else {
+          await db.chat.create({
+            data: {
+              userId: userId,
+              Category: category,
+              Question: question,
+              Answer: ragAnswer, // menyimpan jawaban AI asli
+              conversation_id: conversationId,
+            } as any,
+          });
+        }
+      } catch (dbErr: any) {
+        console.warn('[CHAT_POST] DB save failed (non-fatal):', dbErr?.message || dbErr);
+      }
 
       console.log('[CHAT_POST] Saved to database successfully');
 

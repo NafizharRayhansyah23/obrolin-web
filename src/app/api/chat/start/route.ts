@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../../auth/[...nextauth]/route';
+import { db } from '../../../../lib/db';
 
 export async function POST(request: Request) {
   console.log('\n========================================');
@@ -54,7 +55,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // 3. Call RAG API
+  // 3. Call RAG API
     const ragEndpoint = `${ragApiUrl}/conversations/create/`;
     console.log('[CHAT_START] Calling RAG API:', ragEndpoint);
     
@@ -130,13 +131,33 @@ Error: Connection refused to ${ragApiUrl}
       );
     }
 
-    const conversationId = ragData.conversation_id;
+  const conversationId = ragData.conversation_id;
     if (!conversationId) {
       console.error('[CHAT_START] ❌ No conversation_id in response:', ragData);
       return NextResponse.json(
         { error: 'RAG server did not return conversation_id' },
         { status: 500 }
       );
+    }
+
+    // Persist a lightweight DB record so this conversation shows in the user's history list
+    try {
+      // read optional category from the request body (client may provide it)
+      const body = await request.json().catch(() => ({} as any));
+      const categoryFromRequest = (body && body.category) ? String(body.category) : 'Uncategorized';
+      const userId = parseInt(session.user.id as string);
+      await db.chat.create({
+        data: {
+          userId,
+          Category: categoryFromRequest,
+          Question: '',
+          Answer: '',
+          conversation_id: conversationId,
+        } as any,
+      });
+      console.log('[CHAT_START] Created lightweight DB chat row for user:', userId);
+    } catch (dbErr: any) {
+      console.warn('[CHAT_START] Failed to create DB chat row (non-fatal):', dbErr?.message || dbErr);
     }
 
     console.log('[CHAT_START] ✅ SUCCESS - conversation_id:', conversationId);

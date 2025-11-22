@@ -19,6 +19,21 @@
   }
 }
 
+/* Manual dark mode via .dark class on <html> */
+.dark {
+  --background: #0a0a0a;
+  --foreground: #ededed;
+}
+
+/* Smooth color transitions */
+body {
+  transition: background-color 160ms ease, color 160ms ease;
+}
+
+/* Note: prefer Tailwind's `dark:` variants on components for predictable
+   dark-mode styling. Avoid overriding utility classes globally here so
+   component-level `bg-white dark:bg-...` works as intended. */
+
 body {
   background: var(--background);
   color: var(--foreground);

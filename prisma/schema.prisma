@@ -26,8 +26,10 @@ model Chat {
   Category   String
   Question   String
   Answer     String
+  conversation_id String?
   created_at DateTime @default(now())
-  Feedback   Boolean?
+  Feedback   Int?
+
 
   // --- DAN INI DIRUBAH (RELASINYA) ---
   userId Int // Sebelumnya: User_id

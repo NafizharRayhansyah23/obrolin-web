@@ -32,97 +32,9 @@ export default function ChatWindow() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Hanya jalankan jika:
-    // 1. Status authenticated
-    // 2. Session ada dan punya user.id
-    // 3. Belum punya conversation_id
-    // 4. Tidak sedang initializing
-    // 5. Belum pernah dijalankan (initRef)
-    if (
-      sessionStatus !== 'authenticated' || 
-      !session?.user?.id ||
-      conversationId || 
-      isInitializing ||
-      initRef.current
-    ) {
-      return;
-    }
-
-    initRef.current = true;
-    setIsInitializing(true);
-
-    const startConversation = async (attempt = 1) => {
-      const maxAttempts = 5;
-      setError('');
-      
-      console.log(`[ChatWindow] 🔄 Starting conversation (attempt ${attempt}/${maxAttempts})`);
-      console.log('[ChatWindow] Session:', {
-        status: sessionStatus,
-        hasSession: !!session,
-        userId: session?.user?.id,
-        email: session?.user?.email,
-      });
-
-      try {
-        // Delay yang makin lama untuk setiap attempt
-        const delay = attempt === 1 ? 1000 : 1500 * attempt;
-        console.log(`[ChatWindow] ⏳ Waiting ${delay}ms before request...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-
-        console.log('[ChatWindow] 📡 Fetching /api/chat/start...');
-        const res = await fetch('/api/chat/start', { 
-          method: 'POST',
-          cache: 'no-store',
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        });
-
-        console.log('[ChatWindow] Response:', {
-          status: res.status,
-          ok: res.ok,
-          statusText: res.statusText,
-        });
-
-        if (!res.ok) {
-          if (res.status === 401 && attempt < maxAttempts) {
-            console.log(`[ChatWindow] ⚠️ Unauthorized (attempt ${attempt}/${maxAttempts}), retrying...`);
-            // Retry
-            return startConversation(attempt + 1);
-          }
-
-          // Gagal setelah semua attempt
-          const errorData = await res.json().catch(() => ({ error: res.statusText }));
-          throw new Error(errorData.error || `HTTP ${res.status}: ${res.statusText}`);
-        }
-
-        const data = await res.json();
-        
-        if (!data.conversation_id) {
-          throw new Error('Server tidak mengembalikan conversation_id');
-        }
-
-        console.log('[ChatWindow] ✅ Success! conversation_id:', data.conversation_id);
-        setConversationId(data.conversation_id);
-        setError('');
-      } catch (err: any) {
-        console.error('[ChatWindow] ❌ Error:', err);
-        const errorMsg = err.message || 'Gagal menginisialisasi chat';
-        
-        // Format error message untuk display yang lebih baik
-        const formattedError = errorMsg.includes('FASTAPI BACKEND') 
-          ? errorMsg 
-          : `⚠️ Gagal terhubung ke server: ${errorMsg}`;
-        
-        setError(formattedError);
-        initRef.current = false; // Allow manual retry
-      } finally {
-        setIsInitializing(false);
-      }
-    };
-
-    startConversation();
+    // NOTE: conversation creation is deferred until the user sends the
+    // first message. This avoids creating placeholder DB rows named
+    // "Uncategorized" when the chat UI mounts.
   }, [sessionStatus, session, conversationId, isInitializing]);
 
   useEffect(() => {
@@ -131,7 +43,40 @@ export default function ChatWindow() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || !conversationId) return;
+    if (!selectedCategory) {
+      setError('Please select a category first');
+      setTimeout(() => setError(''), 3000);
+      return;
+    }
+
+    // Create conversation on first send if needed
+    if (!conversationId) {
+      try {
+        setIsInitializing(true);
+        const startRes = await fetch('/api/chat/start', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ category: selectedCategory || undefined }),
+        });
+
+        if (!startRes.ok) {
+          const err = await startRes.json().catch(() => ({ error: startRes.statusText }));
+          throw new Error(err.error || `HTTP ${startRes.status}`);
+        }
+        const startData = await startRes.json();
+        if (!startData?.conversation_id) throw new Error('Server did not return conversation_id');
+        setConversationId(startData.conversation_id);
+      } catch (err: any) {
+        setError(err?.message || 'Failed to start conversation');
+        setIsInitializing(false);
+        return;
+      } finally {
+        setIsInitializing(false);
+      }
+    }
+
+    if (!input.trim()) return;
 
     setError('');
     setIsLoading(true);
@@ -146,6 +91,14 @@ export default function ChatWindow() {
     setInput('');
 
     try {
+      // immediate feedback: add a placeholder bot message so user sees we're working
+      const placeholderBot: Message = {
+        id: crypto.randomUUID(),
+        text: 'Mikir... tunggu sebentar',
+        isUser: false,
+      };
+      setMessages((current) => [...current, placeholderBot]);
+
       const res = await fetch('/api/chat', {
         method: 'POST',
         credentials: 'include',
@@ -165,12 +118,17 @@ export default function ChatWindow() {
         throw new Error(data.error || data.answer || 'Gagal mengirim pesan');
       }
 
-      const botMessage: Message = {
-        id: crypto.randomUUID(),
-        text: data.answer,
-        isUser: false,
-      };
-      setMessages((current) => [...current, botMessage]);
+      // replace the placeholder with actual answer
+      setMessages((current) => {
+        const updated = [...current];
+        const last = updated[updated.length - 1];
+        if (last && !last.isUser) {
+          last.text = data.answer;
+        } else {
+          updated.push({ id: crypto.randomUUID(), text: data.answer, isUser: false });
+        }
+        return updated;
+      });
     } catch (err: any) {
       console.error('[ChatWindow] Submit error:', err);
       setError(err.message);
@@ -310,23 +268,20 @@ export default function ChatWindow() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder={
-            isSessionLoading
-              ? 'Mempersiapkan sesi...'
-              : !conversationId
-              ? 'Menunggu sesi siap...'
-              : !selectedCategory
-              ? 'Pilih kategori terlebih dahulu...'
-              : 'Ketik pertanyaan Anda...'
-          }
-          className="flex-grow p-2 border rounded-md focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
-          disabled={isSessionLoading || !conversationId || !selectedCategory || isLoading}
+              isSessionLoading
+                ? 'Mempersiapkan sesi...'
+                : !selectedCategory
+                ? 'Pilih kategori terlebih dahulu...'
+                : 'Ketik pertanyaan Anda...'
+            }
+            className="flex-grow p-2 border rounded-md focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+            disabled={isSessionLoading || !selectedCategory || isLoading}
         />
         <button
           type="submit"
           className="bg-blue-600 text-white px-4 py-2 rounded-md font-semibold hover:bg-blue-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed"
           disabled={
             isSessionLoading ||
-            !conversationId ||
             !selectedCategory ||
             !input.trim() ||
             isLoading
