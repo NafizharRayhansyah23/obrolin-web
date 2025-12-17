@@ -32,11 +32,42 @@ export async function GET(request: Request) {
       take: limit,
     });
 
+    // Recent prompts (latest chat rows across users)
+    // include related user name where possible
+    const recentPrompts = await db.chat.findMany({
+      orderBy: { created_at: 'desc' },
+      take: limit,
+      select: {
+        Chat_id: true,
+        Question: true,
+        Answer: true,
+        Category: true,
+        created_at: true,
+        userId: true,
+        conversation_id: true,
+        user: {
+          select: {
+            Name: true,
+          },
+        },
+      },
+    });
+
     return NextResponse.json({
       categories: topCategories.map((c: any) => ({ category: c.Category || 'Uncategorized', count: c._count._all })),
       questions: (topQuestions || [])
         .filter((q: any) => q.Question && q.Question.toString().trim().length > 0)
         .map((q: any) => ({ question: q.Question, count: q._count._all })),
+      recentPrompts: (recentPrompts || []).map((r: any) => ({
+        chat_id: r.Chat_id,
+        question: r.Question,
+        answer: r.Answer,
+        category: r.Category,
+        created_at: r.created_at,
+        userId: r.userId,
+        userName: r.user?.Name || null,
+        conversation_id: r.conversation_id,
+      })),
     });
   } catch (err: any) {
     console.error('[ADMIN_ANALYTICS_ERROR]', err);

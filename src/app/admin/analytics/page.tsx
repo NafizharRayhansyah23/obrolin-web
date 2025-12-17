@@ -4,11 +4,11 @@ import { useEffect, useState } from 'react';
 import ModernNavbar from '@/components/ModernNavbar';
 
 type Cat = { category: string; count: number };
-type Q = { question: string; count: number };
+type Recent = { question: string; created_at?: string; userName?: string | null; userId?: number; chat_id?: number; category?: string };
 
 export default function AdminAnalyticsPage() {
   const [cats, setCats] = useState<Cat[]>([]);
-  const [questions, setQuestions] = useState<Q[]>([]);
+  const [questions, setQuestions] = useState<Recent[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [avgFeedback, setAvgFeedback] = useState<number | null>(null);
@@ -21,7 +21,8 @@ export default function AdminAnalyticsPage() {
       .then((d) => {
         if (d.error) throw new Error(d.error);
         setCats(d.categories || []);
-        setQuestions(d.questions || []);
+        // newer API now returns recentPrompts for latest user prompts
+        setQuestions(d.recentPrompts || d.questions || []);
       })
       .catch((e) => setError(e.message || 'Failed to load'))
       .finally(() => setLoading(false));
@@ -157,7 +158,7 @@ export default function AdminAnalyticsPage() {
               </div>
             </section>
 
-            {/* Frequent Prompts Card */}
+            {/* Recent Prompts Card */}
             <section className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
               <div className="bg-gradient-to-r from-cyan-500 to-blue-600 p-6 text-white">
                 <div className="flex items-center justify-between">
@@ -165,24 +166,23 @@ export default function AdminAnalyticsPage() {
                     <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
                     </svg>
-                    <h2 className="text-xl font-bold">Frequent Prompts</h2>
+                    <h2 className="text-xl font-bold">Recent Prompts</h2>
                   </div>
-                  <span className="text-sm bg-white/20 px-3 py-1 rounded-full backdrop-blur-sm">Most asked</span>
+                  <span className="text-sm bg-white/20 px-3 py-1 rounded-full backdrop-blur-sm">Latest</span>
                 </div>
               </div>
 
               <div className="p-6">
                 <ul className="space-y-3 max-h-[520px] overflow-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent">
                   {questions.map((q, i) => (
-                    <li key={i} className="group p-4 bg-gradient-to-r from-white to-gray-50 rounded-xl border border-gray-100 hover:border-cyan-200 hover:from-cyan-50/50 hover:to-blue-50/50 transition-all duration-200 hover:shadow-md cursor-pointer">
+                    <li key={q.chat_id || i} className="group p-4 bg-gradient-to-r from-white to-gray-50 rounded-xl border border-gray-100 hover:border-cyan-200 hover:from-cyan-50/50 hover:to-blue-50/50 transition-all duration-200 hover:shadow-md cursor-pointer">
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium text-gray-900 leading-relaxed">{q.question}</p>
+                          <div className="text-xs text-gray-400 mt-1">{q.category || '—'} • {q.userName ? q.userName : (q.userId ? `user:${q.userId}` : 'unknown')}</div>
                         </div>
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          <span className="px-2.5 py-1 bg-gradient-to-r from-cyan-500 to-blue-600 text-white text-xs font-bold rounded-lg shadow-sm">
-                            {q.count}x
-                          </span>
+                        <div className="flex items-center gap-2 flex-shrink-0 text-right">
+                          <span className="text-xs text-gray-500">{q.created_at ? new Date(q.created_at).toLocaleString() : '—'}</span>
                         </div>
                       </div>
                     </li>
